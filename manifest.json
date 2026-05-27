@@ -1,0 +1,8 @@
+{
+  "version": "1",
+  "metadata": {
+    "appMode": "rmd-static",
+    "primaryDoc": "southwest_economics.Rmd"
+  },
+  "packages": {}
+}
