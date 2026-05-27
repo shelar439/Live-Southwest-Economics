@@ -1,0 +1,125 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# 
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+library(plotly)
+
+# 1. Map state codes for the Southwest Region
+southwest_states <- tibble(
+  state_code = c("TX", "OK", "NM", "AZ"),
+  state_name = c("Texas", "Oklahoma", "New Mexico", "Arizona")
+)
+
+# 2. Programmatically fetch live monthly Unemployment Rates for each state
+# FRED state codes use the pattern: [STATE]UR (e.g., TXUR)
+sw_unemployment <- southwest_states$state_code %>% 
+  map_df(~ {
+    tq_get(paste0(.x, "UR"), get = "economic.data", from = "2005-01-01") %>% 
+      mutate(state_code = .x)
+  }) %>% 
+  rename(unemployment_rate = price)
+
+# 3. Pull Regional Consumer Price Index (CPI) to calculate annualized inflation
+# FRED uses the Census South regional marker (CUUR0300SA0) for broad southern indexing
+sw_inflation <- tq_get("CUUR0300SA0", get = "economic.data", from = "2004-01-01") %>% 
+  mutate(
+    inflation_rate = (price - lag(price, 12)) / lag(price, 12) * 100
+  ) %>% 
+  filter(!is.na(inflation_rate)) %>% 
+  select(date, inflation_rate)
+
+# 4. Join datasets and structure modern chronological clusters
+southwest_data <- sw_unemployment %>% 
+  left_join(sw_inflation, by = "date") %>% 
+  left_join(southwest_states, by = "state_code") %>% 
+  filter(!is.na(inflation_rate)) %>% 
+  mutate(
+    year = as.numeric(format(date, "%Y")),
+    era = case_when(
+      year %in% 2005:2007 ~ "Pre-Financial Crisis",
+      year %in% 2008:2015 ~ "Post-Great Recession",
+      year %in% 2016:2019 ~ "Pre-Pandemic Expansion",
+      year %in% 2020:2022 ~ "Pandemic Inflation Shock",
+      TRUE ~ "Current Recovery & Stability"
+    ),
+    period_label = format(date, "%B %Y")
+  )
+
+# 5. Formulate the aesthetic foundation split by Southwest State
+sw_plot <- ggplot(southwest_data, aes(
+  x = unemployment_rate, 
+  y = inflation_rate, 
+  color = era,
+  text = paste("State:", state_name, "<br>Period:", period_label, "<br>Unemployment:", round(unemployment_rate, 1), "%<br>Inflation:", round(inflation_rate, 1), "%")
+)) +
+  geom_point(alpha = 0.65, size = 2.5) +
+  facet_wrap(~state_name, scales = "free_x") +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal(base_size = 11) +
+  labs(
+    title = "Southwest Regional Phillips Curve (2005 - Present)",
+    x = "State Unemployment Rate (%)",
+    y = "Regional Inflation Rate (% Change Year-Over-Year)"
+  ) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  )
+
+# 6. Render the interactive panel layout in the Notebook
+#   ggplotly(sw_plot, tooltip = "text")
+
+# Save plot as a .htlml pbject
+# 6. Assign the interactive panel layout to a variable
+#interactive_sw_plot <- ggplotly(sw_plot, tooltip = "text")
+
+# 7. Save the interactive chart as a standalone HTML file
+# If you don't have the htmlwidgets package, run: install.packages("htmlwidgets")
+#library(htmlwidgets)
+#saveWidget(interactive_sw_plot, "southwest_phillips_curve.html", selfcontained = TRUE)
+
+# 8. Still display the plot inside your RStudio notebook
+#interactive_sw_plot
+
+# Save as a compressed file
+# 6. Assign the interactive panel layout to a variable
+interactive_sw_plot <- ggplotly(sw_plot, tooltip = "text")
+
+# 7. HIGHLY COMPRESSED LOCAL EXPORT
+# Using htmltools dependency bundling drastically reduces standalone file footprint
+library(htmlwidgets)
+library(htmltools)
+
+saveWidget(
+  widget = interactive_sw_plot, 
+  file = "southwest_phillips_curve.html", 
+  selfcontained = FALSE,          # Triggers maximum compression by separating assets
+  libdir = "lib"                  # Pools the shared JavaScript code into an external folder
+)
+
+# 8. AUTOSAVE / DEPLOY DIRECTLY TO YOUR ONLINE POSIT ACCOUNT
+# This instantly pushes the interactive asset to your cloud workspace dashboard
+# If rsconnect is not yet configured, run: install.packages("rsconnect")
+library(rsconnect)
+
+# Note: The first time you use this, click the 'Publish' button 
+# (blue curling icon in the top right of your RStudio script window) 
+# to link your Posit Cloud or Posit Connect account token.
+rsconnect::deployDoc(
+  doc = "southwest_phillips_curve.html",
+  appName = "southwest-regional-economics",
+  account = rsconnect::accounts()$name[1] # Automatically selects your active Posit profile
+)
+
+# 9. Print inside notebook
+interactive_sw_plot
+
+
+
+```
